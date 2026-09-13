@@ -4,7 +4,13 @@ from __future__ import annotations
 import unittest
 from typing import Iterator, List
 
-from migslice.parser import Migration, extract, iter_migrations, list_ids
+from migslice.parser import (
+    Migration,
+    extract,
+    extract_range,
+    iter_migrations,
+    list_ids,
+)
 
 
 def _counting_stream(lines: List[str], counter: List[int]) -> Iterator[str]:
@@ -159,6 +165,66 @@ class ExtractTests(unittest.TestCase):
 
         result = extract(make_stream(), "mig_49999")
         self.assertEqual(result, ["-- body line for 49999\n"])
+
+
+class ExtractRangeTests(unittest.TestCase):
+    def _stream(self):
+        return [
+            "-- migrate: 0001_a\n",
+            "CREATE TABLE a;\n",
+            "-- migrate: 0002_b\n",
+            "CREATE TABLE b;\n",
+            "-- migrate: 0003_c\n",
+            "CREATE TABLE c;\n",
+            "-- migrate: 0004_d\n",
+            "CREATE TABLE d;\n",
+        ]
+
+    def test_both_bounds_given(self):
+        result = extract_range(self._stream(), "0002_b", "0003_c")
+        self.assertEqual(result, ["CREATE TABLE b;\n", "CREATE TABLE c;\n"])
+
+    def test_from_only_runs_to_end_of_stream(self):
+        result = extract_range(self._stream(), from_id="0003_c")
+        self.assertEqual(result, ["CREATE TABLE c;\n", "CREATE TABLE d;\n"])
+
+    def test_to_only_starts_at_first_migration(self):
+        result = extract_range(self._stream(), to_id="0002_b")
+        self.assertEqual(
+            result, ["CREATE TABLE a;\n", "CREATE TABLE b;\n"]
+        )
+
+    def test_single_id_range_returns_just_that_migration(self):
+        result = extract_range(self._stream(), "0002_b", "0002_b")
+        self.assertEqual(result, ["CREATE TABLE b;\n"])
+
+    def test_missing_from_id_returns_none(self):
+        self.assertIsNone(extract_range(self._stream(), "nope", "0002_b"))
+
+    def test_missing_to_id_returns_none(self):
+        self.assertIsNone(extract_range(self._stream(), "0002_b", "nope"))
+
+    def test_to_before_from_in_stream_order_returns_none(self):
+        # 0003_c appears before 0002_b in a --from/--to sense here since
+        # the range never opens: collection only starts once from_id is
+        # seen, so a to_id that already passed can't close it.
+        result = extract_range(self._stream(), from_id="0003_c", to_id="0002_b")
+        self.assertIsNone(result)
+
+    def test_neither_bound_given_raises(self):
+        with self.assertRaises(ValueError):
+            extract_range(self._stream())
+
+    def test_stops_pulling_from_the_stream_once_to_id_is_closed(self):
+        lines = self._stream()
+        tail = [f"-- migrate: extra_{n}\nfiller\n" for n in range(200_000)]
+        counter = [0]
+        stream = _counting_stream(lines + tail, counter)
+
+        result = extract_range(stream, "0002_b", "0003_c")
+
+        self.assertEqual(result, ["CREATE TABLE b;\n", "CREATE TABLE c;\n"])
+        self.assertLessEqual(counter[0], len(lines) + 1)
 
 
 class ListIdsTests(unittest.TestCase):

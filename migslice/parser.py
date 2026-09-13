@@ -60,6 +60,48 @@ def extract(stream: Iterable[str], target_id: str) -> Optional[List[str]]:
     return None
 
 
+def extract_range(
+    stream: Iterable[str],
+    from_id: Optional[str] = None,
+    to_id: Optional[str] = None,
+) -> Optional[List[str]]:
+    """Return the concatenated lines of every migration from `from_id`
+    through `to_id`, inclusive, in the order they appear in the stream.
+
+    Either bound may be omitted: a missing `from_id` starts at the first
+    migration in the stream, and a missing `to_id` runs through the last.
+    At least one of the two must be given. Ids are matched by stream order,
+    not by comparing them as strings or numbers, so this works regardless
+    of what the id format looks like.
+
+    Returns None if `from_id` is given but never found, or if the stream
+    ends before `to_id` is found - a partial range is not returned, since
+    silently truncating a range is more likely to hide a typo than to be
+    what the caller wanted.
+    """
+    if from_id is None and to_id is None:
+        raise ValueError("at least one of from_id or to_id is required")
+
+    collecting = from_id is None
+    found_from = collecting
+    found_to = False
+    result: List[str] = []
+
+    for migration in iter_migrations(stream):
+        if not collecting and migration.id == from_id:
+            collecting = True
+            found_from = True
+        if collecting:
+            result.extend(migration.lines)
+            if to_id is not None and migration.id == to_id:
+                found_to = True
+                break
+
+    if not found_from or (to_id is not None and not found_to):
+        return None
+    return result
+
+
 def list_ids(stream: Iterable[str]) -> Iterator[str]:
     """Yield migration ids in order, without ever collecting their SQL.
 

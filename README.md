@@ -45,6 +45,24 @@ $ migslice --list dump.sql
 0003_index_email
 ```
 
+To pull more than one migration at a time, use `--from` and `--to` for an
+inclusive range instead of a single id. Either bound can be left off:
+
+```sh
+$ migslice --from 0002_add_login_at --to 0003_index_email dump.sql
+ALTER TABLE users ADD COLUMN login_at TIMESTAMP;
+
+CREATE UNIQUE INDEX idx_users_email ON users (email);
+
+$ migslice --from 0002_add_login_at dump.sql   # runs through the end
+$ migslice --to 0002_add_login_at dump.sql     # starts at the first migration
+```
+
+The range is resolved by the order ids appear in the stream, not by
+sorting or comparing them, so it works no matter what the ids look like.
+If either bound isn't found in the stream, nothing is printed and
+`migslice` exits 1.
+
 It also reads from stdin, so it works in a pipeline:
 
 ```sh
