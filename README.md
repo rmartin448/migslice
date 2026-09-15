@@ -63,6 +63,18 @@ sorting or comparing them, so it works no matter what the ids look like.
 If either bound isn't found in the stream, nothing is printed and
 `migslice` exits 1.
 
+Concatenated files sometimes end up with the same id twice - a merge that
+duplicated a migration, or a script that reused an id after a rebase. Use
+`--check-duplicates` to scan for that without extracting anything:
+
+```sh
+$ migslice --check-duplicates dump.sql
+migslice: duplicate migration id '0002_add_login_at'
+```
+
+It exits 1 if any duplicate ids were found and 0 if the stream is clean,
+so it's usable as a CI check on a generated bundle.
+
 It also reads from stdin, so it works in a pipeline:
 
 ```sh

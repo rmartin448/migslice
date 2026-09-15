@@ -113,3 +113,21 @@ def list_ids(stream: Iterable[str]) -> Iterator[str]:
         match = _MARKER_RE.match(line)
         if match:
             yield match.group(1)
+
+
+def iter_duplicate_ids(stream: Iterable[str]) -> Iterator[str]:
+    """Yield an id every time it's seen again after its first marker.
+
+    Built on `list_ids`, so this still never collects a migration's body -
+    the only state carried across the whole stream is the set of ids seen
+    so far, which for a real migration history is negligible next to the
+    SQL itself. If an id appears three times, it's yielded twice, once per
+    repeat, so a caller that wants an occurrence count doesn't have to
+    re-scan the stream.
+    """
+    seen = set()
+    for migration_id in list_ids(stream):
+        if migration_id in seen:
+            yield migration_id
+        else:
+            seen.add(migration_id)

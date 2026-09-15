@@ -8,6 +8,7 @@ from migslice.parser import (
     Migration,
     extract,
     extract_range,
+    iter_duplicate_ids,
     iter_migrations,
     list_ids,
 )
@@ -243,6 +244,46 @@ class ListIdsTests(unittest.TestCase):
     def test_list_ids_ignores_non_marker_lines(self):
         stream = ["not a marker\n", "-- migrate: only_one\n", "body\n"]
         self.assertEqual(list(list_ids(stream)), ["only_one"])
+
+
+class IterDuplicateIdsTests(unittest.TestCase):
+    def test_no_duplicates_yields_nothing(self):
+        stream = ["-- migrate: 0001_a\n", "-- migrate: 0002_b\n"]
+        self.assertEqual(list(iter_duplicate_ids(stream)), [])
+
+    def test_repeated_id_is_yielded_once_per_repeat(self):
+        stream = [
+            "-- migrate: dup\n",
+            "-- migrate: 0002_b\n",
+            "-- migrate: dup\n",
+            "-- migrate: dup\n",
+        ]
+        self.assertEqual(list(iter_duplicate_ids(stream)), ["dup", "dup"])
+
+    def test_first_occurrence_is_never_reported(self):
+        stream = ["-- migrate: only\n"]
+        self.assertEqual(list(iter_duplicate_ids(stream)), [])
+
+    def test_empty_stream_yields_nothing(self):
+        self.assertEqual(list(iter_duplicate_ids([])), [])
+
+    def test_multiple_ids_each_duplicated(self):
+        stream = [
+            "-- migrate: a\n",
+            "-- migrate: b\n",
+            "-- migrate: a\n",
+            "-- migrate: b\n",
+        ]
+        self.assertEqual(list(iter_duplicate_ids(stream)), ["a", "b"])
+
+    def test_stops_pulling_from_the_stream_early_is_not_assumed(self):
+        # Unlike extract(), a duplicate scan has to see the whole stream -
+        # a later repeat can't be ruled out early.
+        lines = [f"-- migrate: id_{n}\n" for n in range(1000)]
+        counter = [0]
+        stream = _counting_stream(lines, counter)
+        self.assertEqual(list(iter_duplicate_ids(stream)), [])
+        self.assertEqual(counter[0], len(lines))
 
 
 if __name__ == "__main__":
